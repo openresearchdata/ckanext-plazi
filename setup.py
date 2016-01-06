@@ -48,7 +48,7 @@ setup(
 
 
     # What does your project relate to?
-    keywords='''CKAN''',
+    keywords='''CKAN harvester plazi''',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
@@ -78,6 +78,6 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points='''
         [ckan.plugins]
-        plazi=ckanext.plazi.plugin:PlaziPlugin
+        plazi=ckanext.plazi.harvester:PlaziHarvester
     ''',
 )
