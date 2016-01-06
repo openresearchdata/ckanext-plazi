@@ -16,15 +16,15 @@ setup(
     # http://packaging.python.org/en/latest/tutorial.html#version
     version='0.0.1',
 
-    description=''''Plazi Harvester for CKAN'''',
+    description='''Plazi Harvester for CKAN''',
     long_description=long_description,
 
     # The project's main homepage.
-    url='https://github.com/'openresearchdata'/ckanext-plazi',
+    url='https://github.com/openresearchdata/ckanext-plazi',
 
     # Author details
-    author=''''Liip AG'''',
-    author_email=''''ogd@liip.ch'''',
+    author='''Liip AG''',
+    author_email='''ogd@liip.ch''',
 
     # Choose your license
     license='AGPL',
