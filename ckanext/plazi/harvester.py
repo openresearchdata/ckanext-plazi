@@ -10,11 +10,7 @@ from ckan.lib.munge import munge_tag
 from ckan.lib.munge import munge_title_to_name
 from ckanext.harvest.model import HarvestObject
 
-import oaipmh.client
-from oaipmh.metadata import MetadataRegistry
-
-from metadata import oai_ddi_reader
-from metadata import oai_dc_reader
+import requests
 
 log = logging.getLogger(__name__)
 
@@ -24,23 +20,28 @@ class PlaziHarvester(HarvesterBase):
     Plazi Harvester
     '''
 
-    credentials = None
-    md_format = 'oai_dc'
-    set_spec = None
-
-    config = {
-        'user': 'harvest'
-    }
+    HARVEST_USER = 'harvest'
 
     def info(self):
         '''
         Return information about this harvester.
         '''
         return {
-            'name': 'OAI-PMH',
-            'title': 'OAI-PMH',
-            'description': 'Harvester for OAI-PMH data sources'
+            'name': 'plazi_harvester',
+            'title': 'Plazi harvester',
+            'description': 'Harvester for Plazi data sources'
         }
+
+    def _set_config(self, config_str):
+        if config_str:
+            self.config = json.loads(config_str)
+        else:
+            self.config = {}
+
+        if 'user' not in self.config:
+            self.config['user'] = self.HARVEST_USER
+
+        log.debug('Using config: %r' % self.config)
 
     def gather_stage(self, harvest_job):
         '''
@@ -60,22 +61,26 @@ class PlaziHarvester(HarvesterBase):
         log.debug("in gather stage: %s" % harvest_job.source.url)
         try:
             harvest_obj_ids = []
-            registry = self._create_metadata_registry()
             self._set_config(harvest_job.source.config)
-            client = oaipmh.client.Client(
-                harvest_job.source.url,
-                registry,
-                self.credentials
-            )
+            plazi_url = harvest_job.source.url.rstrip('/')
 
-            client.identify()  # check if identify works
-            for header in self._identifier_generator(client):
+            r = requests.get(plazi_url)
+            data = r.json()
+
+            count = 0
+            for entry in data:
+                # TODO remove this limitation
+                if count == 10:
+                    break
+                log.debug(entry)
                 harvest_obj = HarvestObject(
-                    guid=header.identifier(),
-                    job=harvest_job
+                    guid=entry['UUID'],
+                    job=harvest_job,
+                    content=json.dumps(entry)
                 )
                 harvest_obj.save()
                 harvest_obj_ids.append(harvest_obj.id)
+                count = count + 1
         except:
             log.exception(
                 'Gather stage failed %s' %
@@ -87,51 +92,6 @@ class PlaziHarvester(HarvesterBase):
             )
             return None
         return harvest_obj_ids
-
-    def _identifier_generator(self, client):
-        """
-        pyoai generates the URL based on the given method parameters
-        Therefore one may not use the set parameter if it is not there
-        """
-        if self.set_spec:
-            for header in client.listIdentifiers(
-                    metadataPrefix=self.md_format,
-                    set=self.set_spec):
-                yield header
-        else:
-            for header in client.listIdentifiers(
-                    metadataPrefix=self.md_format):
-                yield header
-
-    def _create_metadata_registry(self):
-        registry = MetadataRegistry()
-        registry.registerReader('oai_dc', oai_dc_reader)
-        registry.registerReader('oai_ddi', oai_ddi_reader)
-        return registry
-
-    def _set_config(self, source_config):
-        try:
-            config_json = json.loads(source_config)
-            log.debug('config_json: %s' % config_json)
-            try:
-                username = config_json['username']
-                password = config_json['password']
-                self.credentials = (username, password)
-            except (IndexError, KeyError):
-                pass
-
-            try:
-                self.set_spec = config_json['set']
-            except (IndexError, KeyError):
-                pass
-
-            try:
-                self.md_format = config_json['metadata_prefix']
-            except (IndexError, KeyError):
-                pass
-
-        except ValueError:
-            pass
 
     def fetch_stage(self, harvest_object):
         '''
@@ -148,74 +108,8 @@ class PlaziHarvester(HarvesterBase):
         :returns: True if everything went right, False if errors were found
         '''
         log.debug("in fetch stage: %s" % harvest_object.guid)
-        try:
-            self._set_config(harvest_object.job.source.config)
-            registry = self._create_metadata_registry()
-            client = oaipmh.client.Client(
-                harvest_object.job.source.url,
-                registry,
-                self.credentials
-            )
-            record = None
-            try:
-                log.debug(
-                    "Load %s with metadata prefix '%s'" %
-                    (harvest_object.guid, self.md_format)
-                )
-
-                self._before_record_fetch(harvest_object)
-                record = client.getRecord(
-                    identifier=harvest_object.guid,
-                    metadataPrefix=self.md_format
-                )
-                self._after_record_fetch(record)
-                log.debug('record found!')
-            except:
-                log.exception('getRecord failed')
-                self._save_object_error('Get record failed!', harvest_object)
-                return False
-
-            header, metadata, _ = record
-            log.debug('metadata %s' % metadata)
-            log.debug('header %s' % header)
-
-            try:
-                metadata_modified = header.datestamp().isoformat()
-            except:
-                metadata_modified = None
-
-            try:
-                content_dict = metadata.getMap()
-                content_dict['set_spec'] = header.setSpec()
-                if metadata_modified:
-                    content_dict['metadata_modified'] = metadata_modified
-                log.debug(content_dict)
-                content = json.dumps(content_dict)
-            except:
-                log.exception('Dumping the metadata failed!')
-                self._save_object_error(
-                    'Dumping the metadata failed!',
-                    harvest_object
-                )
-                return False
-
-            harvest_object.content = content
-            harvest_object.save()
-        except:
-            log.exception('Something went wrong!')
-            self._save_object_error(
-                'Exception in fetch stage',
-                harvest_object
-            )
-            return False
-
+        self._set_config(harvest_object.job.source.config)
         return True
-
-    def _before_record_fetch(self, harvest_object):
-        pass
-
-    def _after_record_fetch(self, record):
-        pass
 
     def import_stage(self, harvest_object):
         '''
@@ -234,8 +128,9 @@ class PlaziHarvester(HarvesterBase):
         :param harvest_object: HarvestObject object
         :returns: True if everything went right, False if errors were found
         '''
-
         log.debug("in import stage: %s" % harvest_object.guid)
+        self._set_config(harvest_object.job.source.config)
+
         if not harvest_object:
             log.error('No harvest object received')
             self._save_object_error('No harvest object received')
@@ -252,19 +147,19 @@ class PlaziHarvester(HarvesterBase):
             content = json.loads(harvest_object.content)
             log.debug(content)
 
-            package_dict['id'] = munge_title_to_name(harvest_object.guid)
-            package_dict['name'] = package_dict['id']
+            package_dict['id'] = harvest_object.guid
+            package_dict['name'] = munge_title_to_name(package_dict['title'])
 
             mapping = self._get_mapping()
 
-            for ckan_field, oai_field in mapping.iteritems():
+            for ckan_field, plazi_field in mapping.iteritems():
                 try:
-                    package_dict[ckan_field] = content[oai_field][0]
+                    package_dict[ckan_field] = content[plazi_field]
                 except (IndexError, KeyError):
                     continue
 
-            # add author
-            package_dict['author'] = self._extract_author(content)
+            package_dict['maintainer'] = 'Guido Sautter'
+            package_dict['maintainer_email'] = 'sautter@ipd.uka.de'
 
             # add owner_org
             source_dataset = get_action('package_show')(
@@ -274,13 +169,11 @@ class PlaziHarvester(HarvesterBase):
             owner_org = source_dataset.get('owner_org')
             package_dict['owner_org'] = owner_org
 
-            # add license
-            package_dict['license_id'] = self._extract_license_id(content)
-
             # add resources
-            url = self._get_possible_resource(harvest_object, content)
-            package_dict['resources'] = self._extract_resources(url, content)
+            package_dict['resources'] = [{ 'url': content['darwinCoreArchive'] }]
 
+            '''
+            TODO implement all fields
             # extract tags from 'type' and 'subject' field
             # everything else is added as extra field
             tags, extras = self._extract_tags_and_extras(content)
@@ -306,6 +199,7 @@ class PlaziHarvester(HarvesterBase):
             )
 
             package_dict['groups'] = groups
+            '''
 
             # allow sub-classes to add additional fields
             package_dict = self._extract_additional_fields(
@@ -334,17 +228,10 @@ class PlaziHarvester(HarvesterBase):
     def _get_mapping(self):
         return {
             'title': 'title',
-            'notes': 'description',
-            'maintainer': 'publisher',
-            'maintainer_email': 'maintainer_email',
-            'url': 'source',
+            'url': 'link',
+            'author': 'author',
+            'license_id': 'rights'
         }
-
-    def _extract_author(self, content):
-        return ', '.join(content['creator'])
-
-    def _extract_license_id(self, content):
-        return ', '.join(content['rights'])
 
     def _extract_tags_and_extras(self, content):
         extras = []
@@ -368,16 +255,6 @@ class PlaziHarvester(HarvesterBase):
 
         return (tags, extras)
 
-    def _get_possible_resource(self, harvest_obj, content):
-        url = None
-        candidates = content['identifier']
-        candidates.append(harvest_obj.guid)
-        for ident in candidates:
-            if ident.startswith('http://') or ident.startswith('https://'):
-                url = ident
-                break
-        return url
-
     def _extract_resources(self, url, content):
         resources = []
         log.debug('URL of ressource: %s' % url)
@@ -393,14 +270,6 @@ class PlaziHarvester(HarvesterBase):
                 'url': url
             })
         return resources
-
-    def _extract_groups(self, content, context):
-        if 'series' in content and len(content['series']) > 0:
-            return self._find_or_create_groups(
-                content['series'],
-                context
-            )
-        return []
 
     def _extract_additional_fields(self, content, package_dict):
         # This method is the ideal place for sub-classes to
