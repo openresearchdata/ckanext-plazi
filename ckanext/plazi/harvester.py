@@ -1,5 +1,11 @@
 import logging
 import json
+import os
+import requests
+import tempfile
+import zipfile
+import csv
+import shutil
 
 from ckan.model import Session
 from ckan.logic import get_action
@@ -9,8 +15,6 @@ from ckanext.harvest.harvesters.base import HarvesterBase
 from ckan.lib.munge import munge_tag
 from ckan.lib.munge import munge_title_to_name
 from ckanext.harvest.model import HarvestObject
-
-import requests
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +152,7 @@ class PlaziHarvester(HarvesterBase):
             log.debug(content)
 
             package_dict['id'] = harvest_object.guid
-            package_dict['name'] = munge_title_to_name(package_dict['title'])
+            package_dict['name'] = munge_title_to_name(content['title'])
 
             mapping = self._get_mapping()
 
@@ -170,7 +174,8 @@ class PlaziHarvester(HarvesterBase):
             package_dict['owner_org'] = owner_org
 
             # add resources
-            package_dict['resources'] = [{ 'url': content['darwinCoreArchive'] }]
+            treatments = self._read_taxa_file(content['darwinCoreArchive'])
+            package_dict['resources'] = self._extract_resources(treatments)
 
             '''
             TODO implement all fields
@@ -255,21 +260,50 @@ class PlaziHarvester(HarvesterBase):
 
         return (tags, extras)
 
-    def _extract_resources(self, url, content):
+    def _extract_resources(self, treatments):
         resources = []
-        log.debug('URL of ressource: %s' % url)
-        if url:
-            try:
-                resource_format = content['format'][0]
-            except (IndexError, KeyError):
-                resource_format = 'HTML'
+
+        for treatment in treatments:
+            resource_type = 'HTML'
             resources.append({
-                'name': content['title'][0],
-                'resource_type': resource_format,
-                'format': resource_format,
-                'url': url
+                'name': treatment['scientificName'],
+                'resource_type': resource_type,
+                'format': resource_type,
+                'url': treatment['references']
             })
         return resources
+
+    def _read_taxa_file(self, url):
+        temp_dir = tempfile.mkdtemp()
+        dwca_file_name = url.split('/')[-1]
+        dwca_file_path = os.path.join(temp_dir, dwca_file_name)
+        r = requests.get(url, stream=True)
+        if r.status_code != 200:
+            r.raise_for_status()
+        with open(dwca_file_path, 'wb') as f:
+            for chunk in r.iter_content(1024):
+                f.write(chunk)
+        taxa_file_path = self._unzip(dwca_file_path, temp_dir)
+
+        treatments = self._read_treatments(taxa_file_path)
+
+        # delete temp directory and content
+        shutil.rmtree(temp_dir)
+
+        return treatments
+
+    def _unzip(self, f, temp_dir):
+        z = zipfile.ZipFile(f)
+        taxa_file_path = z.extract('taxa.txt', temp_dir)
+        z.close()
+        return taxa_file_path
+
+    def _read_treatments(self, taxa_file_path):
+        with open(taxa_file_path,'rb') as taxa_file:
+            reader = csv.DictReader(taxa_file, delimiter='\t')
+            treatments = [row for row in reader]
+
+        return treatments
 
     def _extract_additional_fields(self, content, package_dict):
         # This method is the ideal place for sub-classes to
