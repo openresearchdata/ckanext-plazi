@@ -177,14 +177,11 @@ class PlaziHarvester(HarvesterBase):
             treatments = self._read_taxa_file(content['darwinCoreArchive'])
             package_dict['resources'] = self._extract_resources(treatments)
 
-            '''
-            TODO implement all fields
-            # extract tags from 'type' and 'subject' field
-            # everything else is added as extra field
-            tags, extras = self._extract_tags_and_extras(content)
-            package_dict['tags'] = tags
-            package_dict['extras'] = extras
+            # add remaining information as extra fields
+            package_dict['extras'] = self._extract_extras(content)
 
+            # TODO implement group adding
+            '''
             # groups aka projects
             groups = []
 
@@ -238,17 +235,10 @@ class PlaziHarvester(HarvesterBase):
             'license_id': 'rights'
         }
 
-    def _extract_tags_and_extras(self, content):
+    def _extract_extras(self, content):
         extras = []
-        tags = []
         for key, value in content.iteritems():
             if key in self._get_mapping().values():
-                continue
-            if key in ['type', 'subject']:
-                if type(value) is list:
-                    tags.extend(value)
-                else:
-                    tags.extend(value.split(';'))
                 continue
             if value and type(value) is list:
                 value = value[0]
@@ -256,9 +246,7 @@ class PlaziHarvester(HarvesterBase):
                 value = None
             extras.append((key, value))
 
-        tags = [munge_tag(tag[:100]) for tag in tags]
-
-        return (tags, extras)
+        return extras
 
     def _extract_resources(self, treatments):
         resources = []
