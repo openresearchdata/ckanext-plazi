@@ -269,6 +269,7 @@ class PlaziHarvester(HarvesterBase):
 
     def _read_taxa_file(self, url):
         temp_dir = tempfile.mkdtemp()
+        log.debug('Created temporary directory %s' % temp_dir)
         dwca_file_name = url.split('/')[-1]
         dwca_file_path = os.path.join(temp_dir, dwca_file_name)
         r = requests.get(url, stream=True)
@@ -277,11 +278,13 @@ class PlaziHarvester(HarvesterBase):
         with open(dwca_file_path, 'wb') as f:
             for chunk in r.iter_content(1024):
                 f.write(chunk)
+        log.debug('Unziping file %s to %s' % (dwca_file_path, temp_dir))
         taxa_file_path = self._unzip(dwca_file_path, temp_dir)
 
         treatments = self._read_treatments(taxa_file_path)
 
         # delete temp directory and content
+        log.debug('Delete temporary directory %s' % temp_dir)
         shutil.rmtree(temp_dir)
 
         return treatments
@@ -289,6 +292,7 @@ class PlaziHarvester(HarvesterBase):
     def _unzip(self, f, temp_dir):
         z = zipfile.ZipFile(f)
         taxa_file_path = z.extract('taxa.txt', temp_dir)
+        log.debug('Extracted taxa.txt file to %s' % taxa_file_path)
         z.close()
         return taxa_file_path
 
