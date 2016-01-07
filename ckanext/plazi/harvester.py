@@ -25,6 +25,8 @@ class PlaziHarvester(HarvesterBase):
     '''
 
     HARVEST_USER = 'harvest'
+    MAINTAINER = 'Guido Sautter'
+    MAINTAINER_EMAIL = 'sautter@ipd.uka.de'
 
     def info(self):
         '''
@@ -44,6 +46,10 @@ class PlaziHarvester(HarvesterBase):
 
         if 'user' not in self.config:
             self.config['user'] = self.HARVEST_USER
+        if 'maintainer' not in self.config:
+            self.config['maintainer'] = self.MAINTAINER
+        if 'maintainer_email' not in self.config:
+            self.config['maintainer_email'] = self.MAINTAINER_EMAIL
 
         log.debug('Using config: %r' % self.config)
 
@@ -162,8 +168,8 @@ class PlaziHarvester(HarvesterBase):
                 except (IndexError, KeyError):
                     continue
 
-            package_dict['maintainer'] = 'Guido Sautter'
-            package_dict['maintainer_email'] = 'sautter@ipd.uka.de'
+            package_dict['maintainer'] = self.config['maintainer']
+            package_dict['maintainer_email'] = self.config['maintainer_email']
 
             # add owner_org
             source_dataset = get_action('package_show')(
