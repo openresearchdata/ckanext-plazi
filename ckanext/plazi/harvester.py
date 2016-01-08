@@ -27,6 +27,7 @@ class PlaziHarvester(HarvesterBase):
     HARVEST_USER = 'harvest'
     MAINTAINER = 'Guido Sautter'
     MAINTAINER_EMAIL = 'sautter@ipd.uka.de'
+    GROUPS = ['Plazi']
 
     def info(self):
         '''
@@ -50,6 +51,8 @@ class PlaziHarvester(HarvesterBase):
             self.config['maintainer'] = self.MAINTAINER
         if 'maintainer_email' not in self.config:
             self.config['maintainer_email'] = self.MAINTAINER_EMAIL
+        if 'groups' not in self.config:
+            self.config['groups'] = self.GROUPS
 
         log.debug('Using config: %r' % self.config)
 
@@ -77,12 +80,7 @@ class PlaziHarvester(HarvesterBase):
             r = requests.get(plazi_url)
             data = r.json()
 
-            count = 0
             for entry in data:
-                # TODO remove this limitation
-                if count == 10:
-                    break
-                log.debug(entry)
                 harvest_obj = HarvestObject(
                     guid=entry['UUID'],
                     job=harvest_job,
@@ -90,7 +88,6 @@ class PlaziHarvester(HarvesterBase):
                 )
                 harvest_obj.save()
                 harvest_obj_ids.append(harvest_obj.id)
-                count = count + 1
         except:
             log.exception(
                 'Gather stage failed %s' %
@@ -186,28 +183,18 @@ class PlaziHarvester(HarvesterBase):
             # add remaining information as extra fields
             package_dict['extras'] = self._extract_extras(content)
 
-            # TODO implement group adding
-            '''
             # groups aka projects
             groups = []
 
             # create group based on set
-            if content['set_spec']:
-                log.debug('set_spec: %s' % content['set_spec'])
-                groups.extend(
-                    self._find_or_create_groups(
-                        content['set_spec'],
-                        context
-                    )
-                )
-
-            # add groups from content
             groups.extend(
-                self._extract_groups(content, context)
+                self._find_or_create_groups(
+                    self.config['groups'],
+                    context
+                )
             )
 
             package_dict['groups'] = groups
-            '''
 
             # allow sub-classes to add additional fields
             package_dict = self._extract_additional_fields(
