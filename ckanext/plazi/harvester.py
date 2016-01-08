@@ -285,7 +285,7 @@ class PlaziHarvester(HarvesterBase):
 
     def _read_treatments(self, taxa_file_path):
         with open(taxa_file_path,'rb') as taxa_file:
-            reader = csv.DictReader(taxa_file, delimiter='\t')
+            reader = self._UnicodeDictReader(taxa_file, delimiter='\t')
             treatments = [row for row in reader]
 
         return treatments
@@ -314,3 +314,12 @@ class PlaziHarvester(HarvesterBase):
 
         log.debug('Group ids: %s' % group_ids)
         return group_ids
+
+    def _UnicodeDictReader(self, utf8_data, **kwargs):
+        '''
+        A cvs.DictReader implementation which allows unicode strings
+        Source: http://stackoverflow.com/questions/5004687/python-csv-dictreader-with-utf-8-data
+        '''
+        csv_reader = csv.DictReader(utf8_data, **kwargs)
+        for row in csv_reader:
+            yield {key: unicode(value, 'utf-8') for key, value in row.iteritems()}
