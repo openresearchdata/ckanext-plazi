@@ -52,6 +52,10 @@ Document any optional config settings here. For example::
     # (optional, default: 24).
     ckanext.plazi.some_setting = some_default_value
 
+Possible configuration in GUI: (The following values are the default values)
+
+    { "user": "harvest", "maintainer": "Guido Sautter", "maintainer": "Guido Sautter", "maintainer_email": "sautter@ipd.uka.de", "groups": ["Plazi"] }
+
 
 ------------------------
 Development Installation
